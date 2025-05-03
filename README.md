@@ -17,7 +17,7 @@ A simple and efficient terminal-based todo application with a modern UI.
 ```shell
 .
 ├── cmd/
-│   └── lazy-todo/          # メインエントリーポイント
+│   └── lazytodo/          # メインエントリーポイント
 │       └── main.go
 ├── internal/
 │   ├── app/               # アプリケーションロジック
@@ -36,7 +36,14 @@ A simple and efficient terminal-based todo application with a modern UI.
 
 ## Installation / インストール
 
-### From Source / ソースからインストール
+### Quick Install / 簡単なインストール方法
+
+```bash
+# 1コマンドでインストール
+go install github.com/Pregum/lazy-todo-proto/cmd/lazytodo@latest
+```
+
+### Manual Install / 手動インストール
 
 ```bash
 # Clone the repository
@@ -44,11 +51,11 @@ git clone https://github.com/Pregum/lazy-todo-proto.git
 cd lazy-todo-proto
 
 # Build the application
-go build -o lazy-todo ./cmd/lazy-todo
+go build -o lazytodo ./cmd/lazytodo
 
 # Install the application
 mkdir -p $GOPATH/bin
-cp lazy-todo $GOPATH/bin/
+cp lazytodo $GOPATH/bin/
 
 # Add GOPATH/bin to your PATH (if not already added)
 echo 'export PATH=$PATH:$GOPATH/bin' >> ~/.zshrc  # for zsh
@@ -65,7 +72,9 @@ source ~/.bashrc  # for bash
 
 ```bash
 # Run the application
-lazy-todo
+./lazytodo  # macOSの場合
+# or
+lazytodo    # PATHが設定されている場合
 ```
 
 ## Usage / 使い方
