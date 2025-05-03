@@ -106,6 +106,8 @@ type Model struct {
 	width      int
 	height     int
 	focusPane  int // 0: タスクリスト, 1: 詳細ビュー
+	searchMode bool
+	searchText string
 }
 
 func (m *Model) loadTasks() error {
@@ -159,26 +161,38 @@ func (m *Model) saveTasks() error {
 }
 
 func (m Model) filteredTasks() []Task {
+	var filtered []Task
+
+	// ステータスによるフィルタリング
 	switch m.filter {
 	case ShowActive:
-		var active []Task
 		for _, task := range m.tasks {
 			if !task.done {
-				active = append(active, task)
+				filtered = append(filtered, task)
 			}
 		}
-		return active
 	case ShowCompleted:
-		var completed []Task
 		for _, task := range m.tasks {
 			if task.done {
-				completed = append(completed, task)
+				filtered = append(filtered, task)
 			}
 		}
-		return completed
 	default:
-		return m.tasks
+		filtered = m.tasks
 	}
+
+	// 検索テキストによるフィルタリング
+	if m.searchText != "" {
+		var searchFiltered []Task
+		for _, task := range filtered {
+			if strings.Contains(strings.ToLower(task.title), strings.ToLower(m.searchText)) {
+				searchFiltered = append(searchFiltered, task)
+			}
+		}
+		return searchFiltered
+	}
+
+	return filtered
 }
 
 func (m *Model) addToHistory(action Action) {
@@ -259,6 +273,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 	case tea.KeyMsg:
+		if m.searchMode {
+			switch msg.String() {
+			case "enter":
+				m.searchMode = false
+			case "esc":
+				m.searchMode = false
+				m.searchText = ""
+			case "backspace":
+				if len(m.searchText) > 0 {
+					m.searchText = m.searchText[:len(m.searchText)-1]
+				}
+			case "delete":
+				if len(m.searchText) > 0 {
+					m.searchText = m.searchText[:len(m.searchText)-1]
+				}
+			case "ctrl+w":
+				words := strings.Fields(m.searchText)
+				if len(words) > 0 {
+					words = words[:len(words)-1]
+					m.searchText = strings.Join(words, " ")
+				} else {
+					m.searchText = ""
+				}
+			case "ctrl+u":
+				m.searchText = ""
+			default:
+				if len(msg.String()) == 1 {
+					m.searchText += msg.String()
+				}
+			}
+			return m, nil
+		}
+
 		if m.inputMode {
 			switch msg.String() {
 			case "enter":
@@ -389,6 +436,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.undo()
 		case "r":
 			m.redo()
+		case "/":
+			m.searchMode = true
+			m.searchText = ""
 		}
 	}
 	return m, nil
@@ -407,8 +457,13 @@ func (m Model) View() string {
 	}
 	filterStatus := statusStyle.Render(fmt.Sprintf(" Filter: %s ", filterText))
 
+	// 検索モードの表示
+	if m.searchMode {
+		filterStatus = statusStyle.Render(fmt.Sprintf(" Search: %s_", m.searchText))
+	}
+
 	// ステータスバー
-	status := statusStyle.Render(" Status: Ready | n: New Task | e: Edit | ↑/k: Up | ↓/j: Down | Space: Toggle | d: Delete | a: All | t: Active | c: Completed | u: Undo | r: Redo | Tab/h/l: Switch Pane | q: Quit ")
+	status := statusStyle.Render(" Status: Ready | n: New Task | e: Edit | ↑/k: Up | ↓/j: Down | Space: Toggle | d: Delete | a: All | t: Active | c: Completed | u: Undo | r: Redo | /: Search | Tab/h/l: Switch Pane | q: Quit ")
 
 	// タスクリストの表示
 	var taskList strings.Builder
