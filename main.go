@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -36,11 +37,32 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#25A065")).
 			Padding(1)
+
+	detailStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#25A065")).
+			Padding(1)
+
+	focusedBorder = lipgloss.Border{
+		Top:         "━",
+		Bottom:      "━",
+		Left:        "┃",
+		Right:       "┃",
+		TopLeft:     "┏",
+		TopRight:    "┓",
+		BottomLeft:  "┗",
+		BottomRight: "┛",
+	}
+
+	normalBorder = lipgloss.RoundedBorder()
 )
 
 type Task struct {
-	title string
-	done  bool
+	title       string
+	done        bool
+	description string
+	createdAt   time.Time
+	updatedAt   time.Time
 }
 
 type FilterState int
@@ -81,6 +103,9 @@ type Model struct {
 	filter     FilterState
 	history    []Action
 	redoStack  []Action
+	width      int
+	height     int
+	focusPane  int // 0: タスクリスト, 1: 詳細ビュー
 }
 
 func (m *Model) loadTasks() error {
@@ -103,8 +128,10 @@ func (m *Model) loadTasks() error {
 				line = line[2:]
 			}
 			m.tasks = append(m.tasks, Task{
-				title: line,
-				done:  done,
+				title:     line,
+				done:      done,
+				createdAt: time.Now(),
+				updatedAt: time.Now(),
 			})
 		}
 	}
@@ -227,6 +254,10 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
 	case tea.KeyMsg:
 		if m.inputMode {
 			switch msg.String() {
@@ -272,8 +303,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				fmt.Printf("Error saving tasks: %v\n", err)
 			}
 			return m, tea.Quit
-		case "tab":
-			m.activePane = (m.activePane + 1) % len(m.panes)
+		case "tab", "h", "l":
+			m.focusPane = (m.focusPane + 1) % 2
 		case "n":
 			m.inputMode = true
 			m.editMode = false
@@ -350,17 +381,7 @@ func (m Model) View() string {
 	filterStatus := statusStyle.Render(fmt.Sprintf(" Filter: %s ", filterText))
 
 	// ステータスバー
-	status := statusStyle.Render(" Status: Ready | n: New Task | e: Edit | ↑/k: Up | ↓/j: Down | Space: Toggle | d: Delete | a: All | t: Active | c: Completed | u: Undo | r: Redo | q: Quit ")
-
-	// ペインのヘッダー
-	var paneHeaders string
-	for i, pane := range m.panes {
-		if i == m.activePane {
-			paneHeaders += selectedStyle.Render(" " + pane + " ")
-		} else {
-			paneHeaders += normalStyle.Render(" " + pane + " ")
-		}
-	}
+	status := statusStyle.Render(" Status: Ready | n: New Task | e: Edit | ↑/k: Up | ↓/j: Down | Space: Toggle | d: Delete | a: All | t: Active | c: Completed | u: Undo | r: Redo | Tab/h/l: Switch Pane | q: Quit ")
 
 	// タスクリストの表示
 	var taskList strings.Builder
@@ -385,15 +406,50 @@ func (m Model) View() string {
 		}
 	}
 
-	// メインコンテンツエリア
-	content := listStyle.Render(taskList.String())
+	// 詳細ビューの表示
+	var detail strings.Builder
+	if len(m.tasks) > 0 && m.cursor < len(m.tasks) {
+		task := m.tasks[m.cursor]
+		detail.WriteString(fmt.Sprintf("Title: %s\n", task.title))
+		detail.WriteString(fmt.Sprintf("Status: %s\n", map[bool]string{true: "Done", false: "Active"}[task.done]))
+		if task.description != "" {
+			detail.WriteString(fmt.Sprintf("\nDescription:\n%s\n", task.description))
+		}
+		detail.WriteString(fmt.Sprintf("\nCreated: %s\n", task.createdAt.Format("2006-01-02 15:04:05")))
+		detail.WriteString(fmt.Sprintf("Updated: %s\n", task.updatedAt.Format("2006-01-02 15:04:05")))
+	} else {
+		detail.WriteString("No task selected")
+	}
 
-	// レイアウトの組み立て
-	return fmt.Sprintf("%s\n%s\n%s\n%s\n%s\n%s",
+	// ペインのスタイル設定
+	listBorder := normalBorder
+	detailBorder := normalBorder
+	if m.focusPane == 0 {
+		listBorder = focusedBorder
+	} else {
+		detailBorder = focusedBorder
+	}
+
+	listContent := lipgloss.NewStyle().
+		Border(listBorder).
+		BorderForeground(lipgloss.Color("#25A065")).
+		Width(m.width/2 - 4).
+		Render(taskList.String())
+
+	detailContent := lipgloss.NewStyle().
+		Border(detailBorder).
+		BorderForeground(lipgloss.Color("#25A065")).
+		Width(m.width/2 - 4).
+		Render(detail.String())
+
+	// 2ペインレイアウトの組み立て
+	mainContent := lipgloss.JoinHorizontal(lipgloss.Left, listContent, detailContent)
+
+	// 最終的なレイアウトの組み立て
+	return fmt.Sprintf("%s\n%s\n%s\n%s\n%s",
 		title,
-		paneHeaders,
 		filterStatus,
-		content,
+		mainContent,
 		lipgloss.NewStyle().Height(1).Render(""),
 		status,
 	)
@@ -413,6 +469,7 @@ func main() {
 		filter:     ShowAll,
 		history:    []Action{},
 		redoStack:  []Action{},
+		focusPane:  0,
 	}
 
 	// タスクの読み込み
@@ -420,7 +477,7 @@ func main() {
 		fmt.Printf("Error loading tasks: %v\n", err)
 	}
 
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v", err)
 	}
