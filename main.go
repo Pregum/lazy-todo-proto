@@ -51,6 +51,23 @@ const (
 	ShowCompleted
 )
 
+// 操作の種類を定義
+type ActionType int
+
+const (
+	Add ActionType = iota
+	Delete
+	Edit
+	Toggle
+)
+
+// 操作の履歴を保存する構造体
+type Action struct {
+	actionType ActionType
+	task       Task
+	index      int
+}
+
 type Model struct {
 	panes      []string
 	activePane int
@@ -62,6 +79,8 @@ type Model struct {
 	editMode   bool
 	editIndex  int
 	filter     FilterState
+	history    []Action
+	redoStack  []Action
 }
 
 func (m *Model) loadTasks() error {
@@ -135,6 +154,73 @@ func (m Model) filteredTasks() []Task {
 	}
 }
 
+func (m *Model) addToHistory(action Action) {
+	m.history = append(m.history, action)
+	m.redoStack = nil // 新しい操作が行われたので、redoスタックをクリア
+}
+
+func (m *Model) adjustCursor() {
+	if len(m.filteredTasks()) == 0 {
+		m.cursor = 0
+		return
+	}
+	if m.cursor >= len(m.filteredTasks()) {
+		m.cursor = len(m.filteredTasks()) - 1
+	}
+}
+
+func (m *Model) undo() {
+	if len(m.history) == 0 {
+		return
+	}
+
+	lastAction := m.history[len(m.history)-1]
+	m.history = m.history[:len(m.history)-1]
+	m.redoStack = append(m.redoStack, lastAction)
+
+	switch lastAction.actionType {
+	case Add:
+		m.tasks = append(m.tasks[:lastAction.index], m.tasks[lastAction.index+1:]...)
+	case Delete:
+		m.tasks = append(m.tasks[:lastAction.index], append([]Task{lastAction.task}, m.tasks[lastAction.index:]...)...)
+	case Edit:
+		m.tasks[lastAction.index] = lastAction.task
+	case Toggle:
+		m.tasks[lastAction.index].done = !m.tasks[lastAction.index].done
+	}
+
+	m.adjustCursor()
+	if err := m.saveTasks(); err != nil {
+		fmt.Printf("Error saving tasks: %v\n", err)
+	}
+}
+
+func (m *Model) redo() {
+	if len(m.redoStack) == 0 {
+		return
+	}
+
+	nextAction := m.redoStack[len(m.redoStack)-1]
+	m.redoStack = m.redoStack[:len(m.redoStack)-1]
+	m.history = append(m.history, nextAction)
+
+	switch nextAction.actionType {
+	case Add:
+		m.tasks = append(m.tasks[:nextAction.index], append([]Task{nextAction.task}, m.tasks[nextAction.index:]...)...)
+	case Delete:
+		m.tasks = append(m.tasks[:nextAction.index], m.tasks[nextAction.index+1:]...)
+	case Edit:
+		m.tasks[nextAction.index] = nextAction.task
+	case Toggle:
+		m.tasks[nextAction.index].done = !m.tasks[nextAction.index].done
+	}
+
+	m.adjustCursor()
+	if err := m.saveTasks(); err != nil {
+		fmt.Printf("Error saving tasks: %v\n", err)
+	}
+}
+
 func (m Model) Init() tea.Cmd {
 	return nil
 }
@@ -147,10 +233,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if m.input != "" {
 					if m.editMode {
+						oldTask := m.tasks[m.editIndex]
 						m.tasks[m.editIndex].title = m.input
+						m.addToHistory(Action{
+							actionType: Edit,
+							task:       oldTask,
+							index:      m.editIndex,
+						})
 						m.editMode = false
 					} else {
-						m.tasks = append(m.tasks, Task{title: m.input})
+						newTask := Task{title: m.input}
+						m.tasks = append(m.tasks, newTask)
+						m.addToHistory(Action{
+							actionType: Add,
+							task:       newTask,
+							index:      len(m.tasks) - 1,
+						})
 					}
 					m.input = ""
 					if err := m.saveTasks(); err != nil {
@@ -197,26 +295,42 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case " ":
 			if len(m.tasks) > 0 {
 				m.tasks[m.cursor].done = !m.tasks[m.cursor].done
+				m.addToHistory(Action{
+					actionType: Toggle,
+					task:       m.tasks[m.cursor],
+					index:      m.cursor,
+				})
 				if err := m.saveTasks(); err != nil {
 					fmt.Printf("Error saving tasks: %v\n", err)
 				}
 			}
 		case "d":
 			if len(m.tasks) > 0 {
+				deletedTask := m.tasks[m.cursor]
+				m.addToHistory(Action{
+					actionType: Delete,
+					task:       deletedTask,
+					index:      m.cursor,
+				})
 				m.tasks = append(m.tasks[:m.cursor], m.tasks[m.cursor+1:]...)
-				if m.cursor >= len(m.filteredTasks()) {
-					m.cursor = len(m.filteredTasks()) - 1
-				}
+				m.adjustCursor()
 				if err := m.saveTasks(); err != nil {
 					fmt.Printf("Error saving tasks: %v\n", err)
 				}
 			}
 		case "a":
 			m.filter = ShowAll
+			m.adjustCursor()
 		case "c":
 			m.filter = ShowCompleted
+			m.adjustCursor()
 		case "t":
 			m.filter = ShowActive
+			m.adjustCursor()
+		case "u":
+			m.undo()
+		case "r":
+			m.redo()
 		}
 	}
 	return m, nil
@@ -236,7 +350,7 @@ func (m Model) View() string {
 	filterStatus := statusStyle.Render(fmt.Sprintf(" Filter: %s ", filterText))
 
 	// ステータスバー
-	status := statusStyle.Render(" Status: Ready | n: New Task | e: Edit | ↑/k: Up | ↓/j: Down | Space: Toggle | d: Delete | a: All | t: Active | c: Completed | q: Quit ")
+	status := statusStyle.Render(" Status: Ready | n: New Task | e: Edit | ↑/k: Up | ↓/j: Down | Space: Toggle | d: Delete | a: All | t: Active | c: Completed | u: Undo | r: Redo | q: Quit ")
 
 	// ペインのヘッダー
 	var paneHeaders string
@@ -294,6 +408,11 @@ func main() {
 		inputMode:  false,
 		input:      "",
 		filePath:   "todo.txt",
+		editMode:   false,
+		editIndex:  0,
+		filter:     ShowAll,
+		history:    []Action{},
+		redoStack:  []Action{},
 	}
 
 	// タスクの読み込み
