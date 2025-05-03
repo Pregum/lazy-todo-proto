@@ -51,6 +51,8 @@ type Model struct {
 	inputMode  bool
 	input      string
 	filePath   string
+	editMode   bool
+	editIndex  int
 }
 
 func (m *Model) loadTasks() error {
@@ -112,7 +114,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "enter":
 				if m.input != "" {
-					m.tasks = append(m.tasks, Task{title: m.input})
+					if m.editMode {
+						// 編集モードの場合
+						m.tasks[m.editIndex].title = m.input
+						m.editMode = false
+					} else {
+						// 新規追加モードの場合
+						m.tasks = append(m.tasks, Task{title: m.input})
+					}
 					m.input = ""
 					if err := m.saveTasks(); err != nil {
 						fmt.Printf("Error saving tasks: %v\n", err)
@@ -121,6 +130,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.inputMode = false
 			case "esc":
 				m.inputMode = false
+				m.editMode = false
 				m.input = ""
 			default:
 				m.input += msg.String()
@@ -138,6 +148,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activePane = (m.activePane + 1) % len(m.panes)
 		case "n":
 			m.inputMode = true
+			m.editMode = false
+		case "e":
+			if len(m.tasks) > 0 {
+				m.inputMode = true
+				m.editMode = true
+				m.editIndex = m.cursor
+				m.input = m.tasks[m.cursor].title
+			}
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
@@ -153,6 +171,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					fmt.Printf("Error saving tasks: %v\n", err)
 				}
 			}
+		case "d":
+			if len(m.tasks) > 0 {
+				m.tasks = append(m.tasks[:m.cursor], m.tasks[m.cursor+1:]...)
+				if m.cursor >= len(m.tasks) {
+					m.cursor = len(m.tasks) - 1
+				}
+				if err := m.saveTasks(); err != nil {
+					fmt.Printf("Error saving tasks: %v\n", err)
+				}
+			}
 		}
 	}
 	return m, nil
@@ -163,7 +191,7 @@ func (m Model) View() string {
 	title := titleStyle.Render(" Lazy Todo ")
 
 	// ステータスバー
-	status := statusStyle.Render(" Status: Ready | n: New Task | ↑/k: Up | ↓/j: Down | Space: Toggle | q: Quit ")
+	status := statusStyle.Render(" Status: Ready | n: New Task | e: Edit | ↑/k: Up | ↓/j: Down | Space: Toggle | d: Delete | q: Quit ")
 
 	// ペインのヘッダー
 	var paneHeaders string
@@ -178,7 +206,11 @@ func (m Model) View() string {
 	// タスクリストの表示
 	var taskList strings.Builder
 	if m.inputMode {
-		taskList.WriteString("> " + m.input + "_")
+		if m.editMode {
+			taskList.WriteString(fmt.Sprintf("Editing task: %s_", m.input))
+		} else {
+			taskList.WriteString("> " + m.input + "_")
+		}
 	} else {
 		for i, task := range m.tasks {
 			cursor := " "
