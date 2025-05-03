@@ -299,8 +299,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+u":
 				m.searchText = ""
 			default:
-				if len(msg.String()) == 1 {
-					m.searchText += msg.String()
+				// 日本語入力に対応
+				if msg.Type == tea.KeyRunes {
+					m.searchText += string(msg.Runes)
 				}
 			}
 			return m, nil
@@ -351,7 +352,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.input = m.input[:len(m.input)-1]
 				}
 			case "ctrl+w":
-				// 単語単位で削除
 				words := strings.Fields(m.input)
 				if len(words) > 0 {
 					words = words[:len(words)-1]
@@ -360,12 +360,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.input = ""
 				}
 			case "ctrl+u":
-				// 行全体を削除
 				m.input = ""
 			default:
-				// 通常の文字入力
-				if len(msg.String()) == 1 {
-					m.input += msg.String()
+				// 日本語入力に対応
+				if msg.Type == tea.KeyRunes {
+					m.input += string(msg.Runes)
 				}
 			}
 			return m, nil
