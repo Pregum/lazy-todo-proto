@@ -12,7 +12,31 @@ A simple and efficient terminal-based todo application with a modern UI.
 - 🔄 Undo/Redo support / 元に戻す/やり直し機能
 - 📂 Task persistence / タスクの永続化
 
+## Project Structure / プロジェクト構成
+
+```shell
+.
+├── cmd/
+│   └── lazy-todo/          # メインエントリーポイント
+│       └── main.go
+├── internal/
+│   ├── app/               # アプリケーションロジック
+│   │   └── model.go
+│   ├── domain/            # ドメインモデル
+│   │   └── task.go
+│   └── infrastructure/    # 永続化層
+│       └── storage.go
+├── pkg/
+│   └── ui/               # UI関連のユーティリティ
+│       └── styles.go
+├── go.mod
+├── go.sum
+└── README.md
+```
+
 ## Installation / インストール
+
+### From Source / ソースからインストール
 
 ```bash
 # Clone the repository
@@ -20,7 +44,28 @@ git clone https://github.com/Pregum/lazy-todo-proto.git
 cd lazy-todo-proto
 
 # Build the application
-go build
+go build -o lazy-todo ./cmd/lazy-todo
+
+# Install the application
+mkdir -p $GOPATH/bin
+cp lazy-todo $GOPATH/bin/
+
+# Add GOPATH/bin to your PATH (if not already added)
+echo 'export PATH=$PATH:$GOPATH/bin' >> ~/.zshrc  # for zsh
+# or
+echo 'export PATH=$PATH:$GOPATH/bin' >> ~/.bashrc  # for bash
+
+# Reload your shell configuration
+source ~/.zshrc  # for zsh
+# or
+source ~/.bashrc  # for bash
+```
+
+### Usage / 使用方法
+
+```bash
+# Run the application
+lazy-todo
 ```
 
 ## Usage / 使い方
@@ -69,7 +114,3 @@ In search mode, you can use the following commands:
 ## License / ライセンス
 
 MIT License
-
-## Author / 作者
-
-Pregum 
