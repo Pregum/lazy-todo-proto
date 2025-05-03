@@ -439,6 +439,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "/":
 			m.searchMode = true
 			m.searchText = ""
+		case "esc":
+			if m.searchText != "" {
+				m.searchText = ""
+				m.adjustCursor()
+			}
 		}
 	}
 	return m, nil
@@ -457,13 +462,18 @@ func (m Model) View() string {
 	}
 	filterStatus := statusStyle.Render(fmt.Sprintf(" Filter: %s ", filterText))
 
+	// 検索キーワードの表示
+	if m.searchText != "" {
+		filterStatus = statusStyle.Render(fmt.Sprintf(" Filter: %s | Search: %s ", filterText, m.searchText))
+	}
+
 	// 検索モードの表示
 	if m.searchMode {
-		filterStatus = statusStyle.Render(fmt.Sprintf(" Search: %s_", m.searchText))
+		filterStatus = statusStyle.Render(fmt.Sprintf(" Filter: %s | Search: %s_", filterText, m.searchText))
 	}
 
 	// ステータスバー
-	status := statusStyle.Render(" Status: Ready | n: New Task | e: Edit | ↑/k: Up | ↓/j: Down | Space: Toggle | d: Delete | a: All | t: Active | c: Completed | u: Undo | r: Redo | /: Search | Tab/h/l: Switch Pane | q: Quit ")
+	status := statusStyle.Render(" Status: Ready | n: New Task | e: Edit | ↑/k: Up | ↓/j: Down | Space: Toggle | d: Delete | a: All | t: Active | c: Completed | u: Undo | r: Redo | /: Search | Esc: Clear Search | Tab/h/l: Switch Pane | q: Quit ")
 
 	// タスクリストの表示
 	var taskList strings.Builder
