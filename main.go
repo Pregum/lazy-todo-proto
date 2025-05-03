@@ -43,6 +43,14 @@ type Task struct {
 	done  bool
 }
 
+type FilterState int
+
+const (
+	ShowAll FilterState = iota
+	ShowActive
+	ShowCompleted
+)
+
 type Model struct {
 	panes      []string
 	activePane int
@@ -53,6 +61,7 @@ type Model struct {
 	filePath   string
 	editMode   bool
 	editIndex  int
+	filter     FilterState
 }
 
 func (m *Model) loadTasks() error {
@@ -103,6 +112,29 @@ func (m *Model) saveTasks() error {
 	return nil
 }
 
+func (m Model) filteredTasks() []Task {
+	switch m.filter {
+	case ShowActive:
+		var active []Task
+		for _, task := range m.tasks {
+			if !task.done {
+				active = append(active, task)
+			}
+		}
+		return active
+	case ShowCompleted:
+		var completed []Task
+		for _, task := range m.tasks {
+			if task.done {
+				completed = append(completed, task)
+			}
+		}
+		return completed
+	default:
+		return m.tasks
+	}
+}
+
 func (m Model) Init() tea.Cmd {
 	return nil
 }
@@ -115,11 +147,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if m.input != "" {
 					if m.editMode {
-						// 編集モードの場合
 						m.tasks[m.editIndex].title = m.input
 						m.editMode = false
 					} else {
-						// 新規追加モードの場合
 						m.tasks = append(m.tasks, Task{title: m.input})
 					}
 					m.input = ""
@@ -161,7 +191,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			if m.cursor < len(m.tasks)-1 {
+			if m.cursor < len(m.filteredTasks())-1 {
 				m.cursor++
 			}
 		case " ":
@@ -174,13 +204,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "d":
 			if len(m.tasks) > 0 {
 				m.tasks = append(m.tasks[:m.cursor], m.tasks[m.cursor+1:]...)
-				if m.cursor >= len(m.tasks) {
-					m.cursor = len(m.tasks) - 1
+				if m.cursor >= len(m.filteredTasks()) {
+					m.cursor = len(m.filteredTasks()) - 1
 				}
 				if err := m.saveTasks(); err != nil {
 					fmt.Printf("Error saving tasks: %v\n", err)
 				}
 			}
+		case "a":
+			m.filter = ShowAll
+		case "c":
+			m.filter = ShowCompleted
+		case "t":
+			m.filter = ShowActive
 		}
 	}
 	return m, nil
@@ -190,8 +226,17 @@ func (m Model) View() string {
 	// タイトルバー
 	title := titleStyle.Render(" Lazy Todo ")
 
+	// フィルター状態の表示
+	filterText := "All"
+	if m.filter == ShowActive {
+		filterText = "Active"
+	} else if m.filter == ShowCompleted {
+		filterText = "Completed"
+	}
+	filterStatus := statusStyle.Render(fmt.Sprintf(" Filter: %s ", filterText))
+
 	// ステータスバー
-	status := statusStyle.Render(" Status: Ready | n: New Task | e: Edit | ↑/k: Up | ↓/j: Down | Space: Toggle | d: Delete | q: Quit ")
+	status := statusStyle.Render(" Status: Ready | n: New Task | e: Edit | ↑/k: Up | ↓/j: Down | Space: Toggle | d: Delete | a: All | t: Active | c: Completed | q: Quit ")
 
 	// ペインのヘッダー
 	var paneHeaders string
@@ -212,7 +257,8 @@ func (m Model) View() string {
 			taskList.WriteString("> " + m.input + "_")
 		}
 	} else {
-		for i, task := range m.tasks {
+		filteredTasks := m.filteredTasks()
+		for i, task := range filteredTasks {
 			cursor := " "
 			if m.cursor == i {
 				cursor = ">"
@@ -229,9 +275,10 @@ func (m Model) View() string {
 	content := listStyle.Render(taskList.String())
 
 	// レイアウトの組み立て
-	return fmt.Sprintf("%s\n%s\n%s\n%s\n%s",
+	return fmt.Sprintf("%s\n%s\n%s\n%s\n%s\n%s",
 		title,
 		paneHeaders,
+		filterStatus,
 		content,
 		lipgloss.NewStyle().Height(1).Render(""),
 		status,
