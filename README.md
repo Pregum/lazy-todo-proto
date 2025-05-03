@@ -1,8 +1,10 @@
 # Lazy Todo
 
 A simple and efficient terminal-based todo application with a modern UI.
+Inspired by [lazygit](https://github.com/jesseduffield/lazygit) and [lazydocker](https://github.com/jesseduffield/lazydocker).
 
 シンプルで効率的なターミナルベースのタスク管理アプリケーション。
+[lazygit](https://github.com/jesseduffield/lazygit)と[lazydocker](https://github.com/jesseduffield/lazydocker)にインスパイアされて作成されました。
 
 ## Features / 機能
 
