@@ -273,7 +273,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						})
 						m.editMode = false
 					} else {
-						newTask := Task{title: m.input}
+						newTask := Task{
+							title:     m.input,
+							createdAt: time.Now(),
+							updatedAt: time.Now(),
+						}
 						m.tasks = append(m.tasks, newTask)
 						m.addToHistory(Action{
 							actionType: Add,
@@ -291,8 +295,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.inputMode = false
 				m.editMode = false
 				m.input = ""
+			case "backspace":
+				if len(m.input) > 0 {
+					m.input = m.input[:len(m.input)-1]
+				}
+			case "delete":
+				if len(m.input) > 0 {
+					m.input = m.input[:len(m.input)-1]
+				}
+			case "ctrl+w":
+				// 単語単位で削除
+				words := strings.Fields(m.input)
+				if len(words) > 0 {
+					words = words[:len(words)-1]
+					m.input = strings.Join(words, " ")
+				} else {
+					m.input = ""
+				}
+			case "ctrl+u":
+				// 行全体を削除
+				m.input = ""
 			default:
-				m.input += msg.String()
+				// 通常の文字入力
+				if len(msg.String()) == 1 {
+					m.input += msg.String()
+				}
 			}
 			return m, nil
 		}
