@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -48,6 +50,55 @@ type Model struct {
 	cursor     int
 	inputMode  bool
 	input      string
+	filePath   string
+}
+
+func (m *Model) loadTasks() error {
+	file, err := os.Open(m.filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // ファイルが存在しない場合は空のタスクリストで開始
+		}
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if len(line) > 0 {
+			done := false
+			if strings.HasPrefix(line, "x ") {
+				done = true
+				line = line[2:]
+			}
+			m.tasks = append(m.tasks, Task{
+				title: line,
+				done:  done,
+			})
+		}
+	}
+	return scanner.Err()
+}
+
+func (m *Model) saveTasks() error {
+	file, err := os.Create(m.filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	for _, task := range m.tasks {
+		prefix := "x "
+		if !task.done {
+			prefix = ""
+		}
+		_, err := fmt.Fprintf(file, "%s%s\n", prefix, task.title)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (m Model) Init() tea.Cmd {
@@ -63,6 +114,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.input != "" {
 					m.tasks = append(m.tasks, Task{title: m.input})
 					m.input = ""
+					if err := m.saveTasks(); err != nil {
+						fmt.Printf("Error saving tasks: %v\n", err)
+					}
 				}
 				m.inputMode = false
 			case "esc":
@@ -76,6 +130,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "ctrl+c", "q":
+			if err := m.saveTasks(); err != nil {
+				fmt.Printf("Error saving tasks: %v\n", err)
+			}
 			return m, tea.Quit
 		case "tab":
 			m.activePane = (m.activePane + 1) % len(m.panes)
@@ -92,6 +149,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case " ":
 			if len(m.tasks) > 0 {
 				m.tasks[m.cursor].done = !m.tasks[m.cursor].done
+				if err := m.saveTasks(); err != nil {
+					fmt.Printf("Error saving tasks: %v\n", err)
+				}
 			}
 		}
 	}
@@ -154,7 +214,14 @@ func main() {
 		cursor:     0,
 		inputMode:  false,
 		input:      "",
+		filePath:   "todo.txt",
 	}
+
+	// タスクの読み込み
+	if err := m.loadTasks(); err != nil {
+		fmt.Printf("Error loading tasks: %v\n", err)
+	}
+
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v", err)
